@@ -18,6 +18,7 @@ class AdaptiveAudioController:
         session_minutes=45,
         history_size=30,
     ):
+
         self.session_minutes = session_minutes
 
         self.history = deque(
@@ -109,7 +110,9 @@ class AdaptiveAudioController:
         state,
     ):
 
-        sleep_probs = state["sleep_probs"]
+        sleep_probs = (
+            state.sleep_probs
+        )
 
         sleep_probability = (
             self._get_sleep_probability(
@@ -117,8 +120,6 @@ class AdaptiveAudioController:
             )
         )
 
-        # Якщо людина ще явно не засинає,
-        # залишаємо трохи більше звукових подій.
         if sleep_probability < 0.50:
 
             return AudioAction(
@@ -138,8 +139,6 @@ class AdaptiveAudioController:
                 silence_probability=0.10,
             )
 
-        # Якщо перехід у сон вже почався —
-        # менше стимуляції.
         return AudioAction(
             carrier_frequency=165.0,
             beat_frequency=5.0,
@@ -163,7 +162,9 @@ class AdaptiveAudioController:
         state,
     ):
 
-        sleep_probs = state["sleep_probs"]
+        sleep_probs = (
+            state.sleep_probs
+        )
 
         deep_probability = (
             self._get_deep_probability(
@@ -171,8 +172,6 @@ class AdaptiveAudioController:
             )
         )
 
-        # Якщо глибший стан ще нестабільний —
-        # залишаємо дуже м'яку підтримку.
         if deep_probability < 0.45:
 
             return AudioAction(
@@ -192,8 +191,6 @@ class AdaptiveAudioController:
                 silence_probability=0.25,
             )
 
-        # Якщо стан уже стабільний —
-        # головна стратегія: НЕ заважати.
         return AudioAction(
             carrier_frequency=150.0,
             beat_frequency=3.0,
@@ -240,32 +237,46 @@ class AdaptiveAudioController:
         state,
     ):
 
-        minutes_elapsed = state.get(
-            "minutes_elapsed",
-            0.0,
+        minutes_elapsed = (
+            state.minutes_elapsed
         )
 
-        signal_quality = state.get(
-            "signal_quality",
-            1.0,
+        signal_quality = (
+            state.signal_quality
         )
-
 
         self.update_phase(
             minutes_elapsed
         )
-
 
         self.history.append(
             state
         )
 
 
-        # Якщо EEG поганий —
-        # НЕ робимо агресивних змін.
+        # Якщо EEG поганої якості —
+        # не міняємо звук різко.
         if signal_quality < 0.50:
 
             return self.last_action
+
+
+        # Чи можна довіряти alpha-параметрам.
+        alpha_available = (
+            state.alpha_reliable()
+        )
+
+
+        # Чи можна довіряти slow-wave параметрам.
+        slow_wave_available = (
+            state.slow_wave_reliable()
+        )
+
+
+        # Поки ці дві змінні лише готують
+        # controller до phase-locked logic.
+        # Наступним кроком ми реально
+        # використаємо їх у stimulation policy.
 
 
         if self.phase == SessionPhase.CALMING:

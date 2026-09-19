@@ -6,18 +6,6 @@ from src.core.adaptive_audio_controller import (
 )
 
 
-def action_to_dict(action):
-
-    return {
-        "carrier_frequency": action.carrier_frequency,
-        "beat_frequency": action.beat_frequency,
-        "binaural_volume": action.binaural_volume,
-        "noise_volume": action.wave_volume,
-        "master_volume": action.master_volume,
-        "noise_type": "brown",
-    }
-
-
 def main():
 
     audio = AudioEngine(
@@ -118,8 +106,8 @@ def main():
             )
 
             audio.apply_action(
-                action_to_dict(action)
-            )
+    action
+)
 
             time.sleep(10)
 
