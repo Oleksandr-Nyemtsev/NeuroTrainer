@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Jupyter
+**/.ipynb_checkpoints/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Raw / processed EEG data
+data/raw/
+data/processed/
+data/external/
+
+# Large dataset files
+*.edf
+*.npz
+
+# Trained models
+*.pt
+*.pth
+*.ckpt
+
+# Temporary files
+*.tmp
+*.log
+
+# OS
+Thumbs.db
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
