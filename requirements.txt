@@ -1,0 +1,14 @@
+numpy
+scipy
+pandas
+matplotlib
+
+mne
+brainflow
+sounddevice
+
+torch
+scikit-learn
+
+jupyterlab
+pyriemann
