@@ -37,3 +37,8 @@ Thumbs.db
 # IDE
 .vscode/
 .idea/
+# Local model weights and experiment outputs
+/models/
+/exports/
+/isruc*.log
+/train_isruc.log
