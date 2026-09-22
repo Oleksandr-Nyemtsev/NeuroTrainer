@@ -1,4 +1,7 @@
+
 import time
+
+import numpy as np
 
 from brainflow.board_shim import BoardShim, BoardIds
 
@@ -6,6 +9,7 @@ from src.signal.multichannel import process_eeg
 from src.signal.state import build_state
 from src.signal.metrics import relaxation_score
 from src.signal.smoothing import ScoreSmoother
+from src.signal.muse_quality import MuseSignalQuality
 from src.core.controller import choose_audio_action
 
 
@@ -17,67 +21,124 @@ class NeuroSession:
         self.fs = fs
 
         self.eeg_channels = BoardShim.get_eeg_channels(
-            BoardIds.MUSE_2_BOARD
+            BoardIds.MUSE_2_BOARD.value
         )
 
-        self.smoother = ScoreSmoother(
-            window_size=5
-        )
+        self.channel_names = ["TP9", "AF7", "AF8", "TP10"]
+        self.window_samples = int(2 * fs)
 
+        self.eeg_buffer = np.empty((4, 0))
 
-    def run_step(self, num_samples=512):
+        self.quality_checker = MuseSignalQuality(fs=fs)
+        self.smoother = ScoreSmoother(window_size=5)
 
-        data = self.muse.get_data(num_samples)
+    def run_step(self):
 
-        if data.shape[1] < num_samples:
+        # Read only new samples from BrainFlow.
+        data = self.muse.get_data()
+
+        if data is None or data.size == 0:
             return {
                 "ready": False,
-                "samples": data.shape[1]
+                "reason": "Waiting for EEG",
             }
 
-        eeg = data[self.eeg_channels]
+        eeg_new = data[self.eeg_channels]
 
-        results = process_eeg(
-            eeg,
-            fs=self.fs
+        if eeg_new.shape[0] != 4:
+            raise ValueError("Expected four Muse EEG channels")
+
+        # Add new samples to the buffer.
+        self.eeg_buffer = np.concatenate(
+            [self.eeg_buffer, eeg_new],
+            axis=1,
         )
+
+        if self.eeg_buffer.shape[1] < self.window_samples:
+            return {
+                "ready": False,
+                "samples": self.eeg_buffer.shape[1],
+            }
+
+        # Extract one complete window.
+        eeg = self.eeg_buffer[:, :self.window_samples].copy()
+
+        # Keep unused samples for the next step.
+        self.eeg_buffer = self.eeg_buffer[:, self.window_samples:]
+
+        # ----------------------------------------
+        # SIGNAL QUALITY
+        # ----------------------------------------
+
+        quality = self.quality_checker.analyze(eeg)
+
+        for name, info in zip(
+            self.channel_names,
+            quality["channels"],
+        ):
+            print(
+                f"{name}: "
+                f"Q={info['quality']:.2f} "
+                f"Amplitude={info['amplitude_uv']:.1f} uV "
+                f"Flatline={info['flatline']}"
+            )
+
+        scores = [
+            channel["quality"]
+            for channel in quality["channels"]
+        ]
+
+        if min(scores) < 0.75:
+            return {
+                "ready": False,
+                "reason": "Unreliable EEG",
+                "channel_quality": scores,
+                "audio": "Previous action unchanged",
+            }
+
+        # ----------------------------------------
+        # CURRENT EEG PIPELINE
+        # ----------------------------------------
+
+        results = process_eeg(eeg, fs=self.fs)
 
         state = build_state(results)
 
         raw_score = relaxation_score(state)
 
-        smoothed_score = self.smoother.update(
-            raw_score
-        )
+        smoothed_score = self.smoother.update(raw_score)
 
-        action = choose_audio_action(
-            smoothed_score
-        )
+        action = choose_audio_action(smoothed_score)
 
         self.audio.apply_action(action)
 
         return {
             "ready": True,
+            "channel_quality": scores,
             "state": state,
             "raw_score": raw_score,
             "smoothed_score": smoothed_score,
-            "action": action
+            "action": action,
         }
 
+    def run(self, duration_seconds=30, step_seconds=2):
 
-    def run(self, duration_seconds=60, step_seconds=2):
+        if not self.muse.connect():
+            print("Unable to connect to Muse.")
+            return
 
-        start_time = time.time()
+        if not self.muse.start():
+            self.muse.stop()
+            return
+
+        start_time = time.monotonic()
 
         try:
             self.audio.start()
 
-            while time.time() - start_time < duration_seconds:
-
+            while time.monotonic() - start_time < duration_seconds:
                 result = self.run_step()
-
                 print(result)
-
                 time.sleep(step_seconds)
 
         finally:
