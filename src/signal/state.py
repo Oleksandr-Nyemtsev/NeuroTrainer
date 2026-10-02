@@ -16,6 +16,8 @@ def build_state(results):
                 channel["bands"][band]
             )
 
-        state[band] = np.mean(values)
+        if not values or not np.isfinite(values).all():
+            raise ValueError("Band powers must be finite and nonempty")
+        state[band] = float(np.mean(values))
 
     return state

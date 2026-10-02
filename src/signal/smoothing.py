@@ -9,6 +9,8 @@ class ScoreSmoother:
 
 
     def update(self, score):
+        if not np.isfinite(score):
+            raise ValueError("Cannot smooth an invalid score")
         self.values.append(score)
 
         return float(

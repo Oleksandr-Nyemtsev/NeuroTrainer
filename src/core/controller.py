@@ -1,4 +1,14 @@
+import math
+
+
+def neutral_audio_action():
+    # AudioEngine smooths the transition; do not choose a beat from invalid EEG.
+    return {"master_volume": 0.0}
+
+
 def choose_audio_action(score):
+    if not math.isfinite(score):
+        return neutral_audio_action()
 
     if score < 1.5:
         return {

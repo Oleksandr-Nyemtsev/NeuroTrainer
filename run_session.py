@@ -1,3 +1,4 @@
+import logging
 
 from src.hardware.muse import MuseDevice
 from src.audio.engine import AudioEngine
@@ -5,6 +6,7 @@ from src.core.session import NeuroSession
 
 
 def main():
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
     muse = MuseDevice()
 
     audio = AudioEngine(

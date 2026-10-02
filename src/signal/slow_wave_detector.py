@@ -14,12 +14,20 @@ class SlowWaveDetector:
         fs=256,
         low=0.5,
         high=1.2,
+        min_amplitude=1e-6,
     ):
 
         self.fs = fs
         self.low = low
         self.high = high
+        # Numerical floor in the supplied signal units.
+        self.min_amplitude = min_amplitude
 
+
+    @staticmethod
+    def _undefined():
+        return {"slow_wave_amplitude": 0.0, "slow_wave_phase": 0.0,
+                "slow_wave_stability": 0.0, "rhythm_defined": False}
 
     def _bandpass(
         self,
@@ -54,6 +62,7 @@ class SlowWaveDetector:
         channels x samples
         """
 
+        eeg = np.asarray(eeg, dtype=float)
         if eeg.ndim == 1:
 
             eeg = eeg[
@@ -61,6 +70,11 @@ class SlowWaveDetector:
                 :
             ]
 
+
+        if (eeg.ndim != 2 or not eeg.shape[0] or eeg.shape[1] < 2 * self.fs
+                or not np.isfinite(eeg).all()
+                or np.any(np.std(eeg, axis=1) <= self.min_amplitude)):
+            return self._undefined()
 
         amplitudes = []
         phases = []
@@ -122,6 +136,9 @@ class SlowWaveDetector:
         )
 
 
+        if not np.isfinite(mean_amplitude) or min(amplitudes) <= self.min_amplitude:
+            return self._undefined()
+
         complex_phases = np.exp(
             1j * np.array(
                 phases
@@ -148,6 +165,7 @@ class SlowWaveDetector:
 
 
         return {
+            "rhythm_defined": True,
             "slow_wave_amplitude":
                 mean_amplitude,
 

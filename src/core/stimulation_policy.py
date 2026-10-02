@@ -60,7 +60,7 @@ class StimulationPolicy:
         # --------------------------------
 
         if (
-            state.signal_quality
+            not state.is_valid() or state.signal_quality
             < self.min_signal_quality
         ):
 

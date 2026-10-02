@@ -16,6 +16,8 @@ class AlphaTracker:
         alpha_min=7.5,
         alpha_max=12.5,
         filter_width=1.5,
+        min_amplitude=1e-6,
+        min_peak_power=1e-12,
     ):
 
         self.fs = fs
@@ -24,9 +26,17 @@ class AlphaTracker:
         self.alpha_max = alpha_max
 
         self.filter_width = filter_width
+        # Floors are in input-signal units, not calibrated physiological thresholds.
+        self.min_amplitude = min_amplitude
+        self.min_peak_power = min_peak_power
 
         self.iaf = None
 
+
+    @staticmethod
+    def _undefined():
+        return {"iaf": None, "alpha_amplitude": 0.0, "alpha_phase": 0.0,
+                "alpha_stability": 0.0, "rhythm_defined": False}
 
     def estimate_iaf(
         self,
@@ -39,8 +49,14 @@ class AlphaTracker:
         channels x samples
         """
 
+        eeg = np.asarray(eeg, dtype=float)
         if eeg.ndim == 1:
             eeg = eeg[np.newaxis, :]
+        if (eeg.ndim != 2 or not eeg.shape[0] or eeg.shape[1] < self.fs
+                or not np.isfinite(eeg).all()
+                or np.any(np.std(eeg, axis=1) <= self.min_amplitude)):
+            self.iaf = None
+            return None
 
         channel_peaks = []
 
@@ -69,7 +85,7 @@ class AlphaTracker:
                 alpha_mask
             ]
 
-            if len(alpha_freqs) == 0:
+            if len(alpha_freqs) == 0 or np.max(alpha_psd) <= self.min_peak_power:
                 continue
 
             peak_index = np.argmax(
@@ -156,6 +172,15 @@ class AlphaTracker:
         channels x samples
         """
 
+        eeg = np.asarray(eeg, dtype=float)
+        if eeg.ndim == 1:
+            eeg = eeg[np.newaxis, :]
+        if (eeg.ndim != 2 or not eeg.shape[0] or eeg.shape[1] < self.fs
+                or not np.isfinite(eeg).all()
+                or np.any(np.std(eeg, axis=1) <= self.min_amplitude)):
+            self.iaf = None
+            return self._undefined()
+
         if self.iaf is None:
 
             self.estimate_iaf(
@@ -165,12 +190,7 @@ class AlphaTracker:
 
         if self.iaf is None:
 
-            return {
-                "iaf": None,
-                "alpha_amplitude": 0.0,
-                "alpha_phase": 0.0,
-                "alpha_stability": 0.0,
-            }
+            return self._undefined()
 
 
         if eeg.ndim == 1:
@@ -247,6 +267,10 @@ class AlphaTracker:
         )
 
 
+        if not np.isfinite(mean_amplitude) or min(amplitudes) <= self.min_amplitude:
+            self.iaf = None
+            return self._undefined()
+
         # Circular mean для phase
 
         complex_phases = np.exp(
@@ -279,6 +303,7 @@ class AlphaTracker:
 
 
         return {
+            "rhythm_defined": True,
             "iaf": self.iaf,
 
             "alpha_amplitude":

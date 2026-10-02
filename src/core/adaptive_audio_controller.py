@@ -237,12 +237,12 @@ class AdaptiveAudioController:
         state,
     ):
 
+        if not state.is_valid() or state.signal_quality < 0.50:
+            self.last_action = AudioAction(master_volume=0.0)
+            return self.last_action
+
         minutes_elapsed = (
             state.minutes_elapsed
-        )
-
-        signal_quality = (
-            state.signal_quality
         )
 
         self.update_phase(
@@ -252,13 +252,6 @@ class AdaptiveAudioController:
         self.history.append(
             state
         )
-
-
-        # Якщо EEG поганої якості —
-        # не міняємо звук різко.
-        if signal_quality < 0.50:
-
-            return self.last_action
 
 
         # Чи можна довіряти alpha-параметрам.

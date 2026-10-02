@@ -1,27 +1,12 @@
 import numpy as np
-import torch
+from scipy.signal import resample_poly
 
 from src.core.brain_state_estimator import BrainStateEstimator
 
 
-class DummySleepModel(torch.nn.Module):
-
-    def forward(self, x):
-
-        batch_size = x.shape[0]
-
-        # Просто тестові logits для 5 класів:
-        # Wake, N1, N2, N3, REM
-        logits = torch.tensor(
-            [[0.5, 1.0, 2.0, 0.8, 0.2]],
-            dtype=torch.float32,
-            device=x.device,
-        )
-
-        return logits.repeat(
-            batch_size,
-            1,
-        )
+class DummySleepModel:
+    def predict(self, eeg):
+        return {"Wake": 0.1, "N1": 0.2, "N2": 0.5, "N3": 0.15, "REM": 0.05}
 
 
 FS = 256
@@ -80,10 +65,7 @@ eeg_raw = np.vstack(
 
 # Для тесту SleepCNN беремо
 # 3000 samples, як у нашій моделі
-eeg_for_model = eeg_raw[
-    :,
-    :3000
-]
+eeg_for_model = resample_poly(eeg_raw, 25, 64, axis=1)
 
 
 model = DummySleepModel()
@@ -92,7 +74,6 @@ model = DummySleepModel()
 estimator = BrainStateEstimator(
     sleep_model=model,
     fs=FS,
-    device="cpu",
 )
 
 

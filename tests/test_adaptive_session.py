@@ -1,4 +1,5 @@
 import time
+from src.core.brain_state import BrainState
 
 from src.audio.engine import AudioEngine
 from src.core.adaptive_audio_controller import (
@@ -86,7 +87,7 @@ def main():
         for state in test_states:
 
             action = controller.choose_action(
-                state
+                BrainState(**state)
             )
 
             print()

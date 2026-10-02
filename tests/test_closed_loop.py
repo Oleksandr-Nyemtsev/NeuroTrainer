@@ -45,7 +45,7 @@ print(action)
 audio = AudioEngine(
     carrier_frequency=440,
     beat_frequency=8,
-    volume=0.10,
+    binaural_volume=0.10,
     device=3
 )
 

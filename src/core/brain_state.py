@@ -1,3 +1,4 @@
+import math
 from dataclasses import dataclass, field
 from typing import Dict
 
@@ -34,6 +35,18 @@ class BrainState:
     minutes_elapsed: float = 0.0
 
 
+    def __post_init__(self):
+        if not self.is_valid():
+            raise ValueError("BrainState values must be finite")
+
+    def is_valid(self):
+        values = [self.alpha_amplitude, self.alpha_phase, self.alpha_stability,
+                  self.slow_wave_amplitude, self.slow_wave_phase, self.slow_wave_stability,
+                  self.signal_quality, self.minutes_elapsed, *self.sleep_probs.values()]
+        if self.iaf is not None:
+            values.append(self.iaf)
+        return bool(self.sleep_probs) and all(math.isfinite(v) for v in values)
+
     def dominant_stage(self):
 
         return max(
@@ -66,7 +79,9 @@ class BrainState:
     ):
 
         return (
-            self.iaf is not None
+            self.is_valid()
+            and self.iaf is not None
+            and self.alpha_amplitude > 1e-6
             and self.alpha_stability >= threshold
             and self.signal_quality >= 0.70
         )
@@ -78,7 +93,9 @@ class BrainState:
     ):
 
         return (
-            self.slow_wave_stability >= threshold
+            self.is_valid()
+            and self.slow_wave_amplitude > 1e-6
+            and self.slow_wave_stability >= threshold
             and self.signal_quality >= 0.70
         )
 

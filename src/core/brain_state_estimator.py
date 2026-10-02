@@ -1,3 +1,4 @@
+import numpy as np
 from src.core.brain_state import BrainState
 from src.signal.alpha_tracker import AlphaTracker
 from src.signal.slow_wave_detector import SlowWaveDetector
@@ -31,11 +32,23 @@ class BrainStateEstimator:
         minutes_elapsed=0.0,
     ):
 
+        if (not np.isfinite(signal_quality) or not np.isfinite(minutes_elapsed)
+                or np.size(eeg_raw) == 0 or np.size(eeg_for_model) == 0
+                or not np.isfinite(eeg_raw).all() or not np.isfinite(eeg_for_model).all()):
+            return BrainState(signal_quality=0.0)
+
+        # Numerical flatline gate in raw input units, before model inference.
+        if np.any(np.std(eeg_raw, axis=-1) <= self.alpha_tracker.min_amplitude):
+            return BrainState(signal_quality=0.0)
+
         # Реальная SleepCNN
         sleep_probs = self.sleep_model.predict(
             eeg_for_model
         )
 
+
+        if not sleep_probs or not all(np.isfinite(v) for v in sleep_probs.values()):
+            return BrainState(signal_quality=0.0)
 
         # Alpha
         alpha_result = (

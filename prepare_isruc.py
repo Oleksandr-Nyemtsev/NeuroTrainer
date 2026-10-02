@@ -193,6 +193,7 @@ def prepare_recording(edf_file):
 
     X_parts = []
     y_parts = []
+    onset_parts = []
     skipped = 0
 
     for (_, event), label in zip(
@@ -232,6 +233,7 @@ def prepare_recording(edf_file):
 
         X_parts.append(epoch)
         y_parts.append(label)
+        onset_parts.append(float(event["onset"]))
 
     if not X_parts:
         raise ValueError("No usable epochs")
@@ -259,6 +261,10 @@ def prepare_recording(edf_file):
         source_channels=np.asarray(
             source_channels,
         ),
+        onsets=np.asarray(onset_parts, dtype=np.float64),
+        recording=prefix,
+        window_start=np.asarray(onset_parts, dtype=np.float64),
+        window_end=np.asarray(onset_parts, dtype=np.float64) + EPOCH_SECONDS,
         sampling_frequency=TARGET_FS,
     )
 

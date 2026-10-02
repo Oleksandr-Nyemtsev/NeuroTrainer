@@ -4,11 +4,13 @@ pandas
 matplotlib
 
 mne
-brainflow
+brainflow==5.23.0
+# BrainFlow 5.23 native loader falls back to pkg_resources.
+setuptools>=80.9,<81
 sounddevice
 
 torch
 scikit-learn
 
 jupyterlab
-pyriemann
+pyriemann==0.12
