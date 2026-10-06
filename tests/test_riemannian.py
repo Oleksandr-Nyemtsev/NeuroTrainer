@@ -37,3 +37,11 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+def test_riemannian_synthetic():
+    x = np.random.default_rng(42).normal(size=(10, 2, 3000))
+    cov = Covariances(estimator="scm").fit_transform(x)
+    features = TangentSpace(metric="riemann").fit_transform(cov)
+    assert cov.shape == (10, 2, 2)
+    assert features.shape == (10, 3)
+    assert np.isfinite(features).all()

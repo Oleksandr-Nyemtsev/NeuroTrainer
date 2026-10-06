@@ -54,3 +54,10 @@ audio.apply_action(action)
 print("\nAUDIO PARAMETERS:")
 print("Carrier:", audio.carrier_frequency)
 print("Beat:", audio.beat_frequency)
+
+
+def test_closed_loop_without_audio_output():
+    assert np.isfinite(score)
+    assert action["beat_frequency"] in (6, 8, 10)
+    assert audio.stream is None
+    assert audio.target_beat_frequency == action["beat_frequency"]

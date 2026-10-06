@@ -14,3 +14,8 @@ from src.signal.metrics import relaxation_score
 
 
 print("All imports OK")
+
+
+def test_software_interfaces_import():
+    assert callable(MuseDevice) and callable(AudioEngine)
+    assert callable(NeuroSession) and callable(process_eeg)

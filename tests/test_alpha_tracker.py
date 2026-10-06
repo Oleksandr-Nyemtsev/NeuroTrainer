@@ -85,3 +85,10 @@ print(
     "Alpha stability:",
     result["alpha_stability"],
 )
+
+
+def test_alpha_tracker_synthetic():
+    assert abs(iaf - TRUE_ALPHA) < 0.5
+    assert result["rhythm_defined"]
+    assert result["alpha_amplitude"] > 0
+    assert 0 <= result["alpha_stability"] <= 1

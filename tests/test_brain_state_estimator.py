@@ -143,3 +143,10 @@ print()
 print(
     "BRAIN STATE ESTIMATOR TEST OK"
 )
+
+
+def test_estimator_synthetic():
+    assert state.is_valid()
+    assert state.dominant_stage() == "N2"
+    assert eeg_for_model.shape == (2, 3000)
+    assert abs(state.iaf - 10) < 0.5

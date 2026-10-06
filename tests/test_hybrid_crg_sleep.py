@@ -35,3 +35,10 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+def test_hybrid_forward_cpu():
+    model = HybridCRGSleep().cpu().eval()
+    with torch.no_grad():
+        output = model(torch.zeros(2, 2, 3000))
+    assert output.shape == (2, 5)
+    assert torch.isfinite(output).all()

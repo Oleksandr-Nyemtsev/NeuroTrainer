@@ -14,3 +14,5 @@ scikit-learn
 
 jupyterlab
 pyriemann==0.12
+
+# Windows Conda users: also apply requirements-conda-windows.txt (native BLAS compatibility).

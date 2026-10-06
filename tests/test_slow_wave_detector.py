@@ -74,3 +74,10 @@ print(
     "Slow-wave stability:",
     result["slow_wave_stability"],
 )
+
+
+def test_slow_wave_synthetic():
+    assert result["rhythm_defined"]
+    assert result["slow_wave_amplitude"] > 0
+    assert np.isfinite(result["slow_wave_phase"])
+    assert 0 <= result["slow_wave_stability"] <= 1

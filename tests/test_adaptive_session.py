@@ -119,3 +119,14 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+def test_adaptive_policy_without_audio_output():
+    import math
+    from dataclasses import asdict
+    controller = AdaptiveAudioController(session_minutes=45)
+    for minutes in (2, 12, 22, 42):
+        state = BrainState(minutes_elapsed=minutes, signal_quality=.95)
+        action = controller.choose_action(state)
+        assert all(math.isfinite(value) for value in asdict(action).values())
+        assert 0 <= action.master_volume <= 1

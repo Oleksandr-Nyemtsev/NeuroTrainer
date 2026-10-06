@@ -1,0 +1,8 @@
+# Conda MatchSpecs, not pip requirements. Apply in the activated Windows environment:
+# conda install -n neuro_env -c conda-forge --freeze-installed --file requirements-conda-windows.txt
+# NumPy MKL + llvm-openmp's libiomp5md shim lacks fbgemm's _vcomp_* exports.
+# Use pthreads OpenBLAS so NumPy cannot pre-load that incompatible OpenMP shim.
+libblas=*=*openblas
+libcblas=*=*openblas
+liblapack=*=*openblas
+libopenblas=*=pthreads*
