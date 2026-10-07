@@ -51,6 +51,24 @@ def load_journal(path):
                 raise ValueError('Observation or command missing')
             if type(record['observation'].get('ready')) is not bool:
                 raise ValueError('Observation ready flag must be boolean')
+            # A syntactically valid JSON file can still have damaged nested fields.
+            # Reject it here so the CLI can report ValueError instead of a traceback.
+            obs = record['observation']
+            for field in ('state', 'sleep'):
+                if field in obs and not isinstance(obs[field], dict):
+                    raise ValueError(f'Observation {identifier}: {field} must be an object')
+            if 'reason' in obs and not isinstance(obs['reason'], str):
+                raise ValueError(f'Observation {identifier}: reason must be text')
+            if 'effective_targets' in record and not isinstance(record['effective_targets'], dict):
+                raise ValueError(f'Observation {identifier}: effective_targets must be an object')
+            for field in ('active_action_id', 'before_observation_id',
+                          'fast_window_after_action_id', 'sleep_window_after_action_id'):
+                value = record.get(field)
+                if value is not None and (type(value) is not int or value < 1):
+                    raise ValueError(f'Observation {identifier}: {field} must be a positive integer or null')
+            stage = obs.get('sleep', {}).get('stage')
+            if stage is not None and (not isinstance(stage, str) or stage not in STAGES):
+                raise ValueError(f'Observation {identifier}: unknown sleep stage')
             if record.get('audio_enabled') != records[0]['audio_enabled']:
                 raise ValueError('Audio mode changed inside journal')
         else:

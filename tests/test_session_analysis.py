@@ -92,3 +92,17 @@ def test_duplicate_ids_rejected(tmp_path):
     rows[2]['id']=1
     path.write_text(''.join(json.dumps(r)+'\n' for r in rows))
     with pytest.raises(ValueError,match='IDs'): analyze_session(path)
+
+
+@pytest.mark.parametrize('location,key,bad', [
+    ('observation','sleep',None), ('observation','state',[]),
+    ('observation','reason',[]), ('record','effective_targets',None),
+    ('record','fast_window_after_action_id',[]), ('record','before_observation_id',{}),
+])
+def test_damaged_nested_fields_raise_readable_error(tmp_path,location,key,bad):
+    path=make_journal(tmp_path)
+    rows=[json.loads(line) for line in path.read_text().splitlines()]
+    target=rows[1]['observation'] if location=='observation' else rows[1]
+    target[key]=bad
+    path.write_text(''.join(json.dumps(row)+'\n' for row in rows))
+    with pytest.raises(ValueError,match=key): analyze_session(path)
