@@ -42,3 +42,6 @@ Thumbs.db
 /exports/
 /isruc*.log
 /train_isruc.log
+
+# Local personal EEG feature/action journals
+/data/sessions/
