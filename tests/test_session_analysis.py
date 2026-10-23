@@ -106,3 +106,14 @@ def test_damaged_nested_fields_raise_readable_error(tmp_path,location,key,bad):
     target[key]=bad
     path.write_text(''.join(json.dumps(row)+'\n' for row in rows))
     with pytest.raises(ValueError,match=key): analyze_session(path)
+
+
+def test_enabled_but_muted_session_is_explicit(tmp_path):
+    path = make_journal(tmp_path)
+    records = [json.loads(line) for line in path.read_text().splitlines()]
+    for row in records:
+        if row['type'] == 'observation':
+            row['effective_targets']['master_volume'] = 0
+    path.write_text(''.join(json.dumps(r)+'\n' for r in records))
+    report = analyze_session(path)
+    assert any('all recorded volume targets were zero' in w for w in report['warnings'])

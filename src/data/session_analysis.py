@@ -166,6 +166,8 @@ def analyze_session(path):
         warnings.append('No EEG observations recorded; no response analysis is possible.')
     if not header['audio_enabled']:
         warnings.append('Silent session: cannot estimate a response to played audio.')
+    elif rows and all(r.get('effective_targets', {}).get('master_volume') == 0 for r in rows):
+        warnings.append('Audio was enabled, but all recorded volume targets were zero: no sound response can be estimated.')
     return {'schema_version': 1, 'source_name': Path(path).name, 'source_sha256': digest,
             'audio_enabled': header['audio_enabled'], 'status': end.get('status') if end else 'incomplete',
             'observations': len(rows), 'valid_observations': len(valid),

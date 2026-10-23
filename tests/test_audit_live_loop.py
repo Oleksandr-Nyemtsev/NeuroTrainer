@@ -97,4 +97,107 @@ def test_loop_subtracts_processing_time(monkeypatch, setup):
     muse.connect = muse.start = lambda: True
     muse.stop = session.audio.start = session.audio.stop = lambda: None
     session.run(duration_seconds=4, step_seconds=2)
-    assert sleeps == [1.5, 1.5]
+    assert sleeps == [1] * 5 + [1.5, 1.5]
+    assert clock[0] == 9.0
+
+
+@pytest.mark.parametrize("problem", ["gap", "duplicate", "backward"])
+def test_timestamp_diagnostic_counts(setup, problem):
+    session, muse, actions, now = setup
+    data = chunk(512)
+    if problem == "gap":
+        data[4, 200:] += .1
+    elif problem == "duplicate":
+        data[4, 200] = data[4, 199]
+    else:
+        data[4, 200] = data[4, 199] - .001
+    muse.get_data = lambda: data
+    result = session.run_step()
+    d = result["timestamp_diagnostics"]
+    assert not result["ready"]
+    assert d["received_samples"] == 512
+    assert d["boundary_interval_ms"] is None
+    assert d["expected_interval_ms"] == pytest.approx(1000 / 256)
+    assert d["gap_threshold_ms"] == pytest.approx(1500 / 256)
+    assert d["duplicate_count"] == int(problem == "duplicate")
+    assert d["backward_count"] == int(problem == "backward")
+    assert d["gap_count"] == 1
+    if problem == "gap":
+        assert d["max_interval_ms"] == pytest.approx(100 + 1000 / 256)
+    assert actions[-1] == {"master_volume": 0.}
+
+
+def test_timestamp_boundary_and_diagnostic_reset(setup):
+    session, muse, actions, now = setup
+    muse.get_data = lambda: chunk(256, end=999.)
+    session.run_step()
+    muse.get_data = lambda: chunk(256, end=1000.1)
+    result = session.run_step()
+    d = result["timestamp_diagnostics"]
+    assert d["boundary_interval_ms"] == pytest.approx(100 + 1000 / 256)
+    assert d["gap_count"] == 1
+    muse.get_data = lambda: None
+    assert "timestamp_diagnostics" not in session.run_step()
+
+
+def test_valid_stream_keeps_timestamp_diagnostics(setup):
+    session, muse, actions, now = setup
+    muse.get_data = lambda: chunk(512)
+    result = session.run_step()
+    assert result["ready"]
+    d = result["timestamp_diagnostics"]
+    assert d["gap_count"] == d["duplicate_count"] == d["backward_count"] == 0
+    assert d["min_interval_ms"] == d["max_interval_ms"] == 1000 / 256
+
+
+def test_packet_ids_recorded_even_when_timestamps_rejected(setup, tmp_path):
+    import json
+    from src.data.session_journal import SessionJournal
+    session, muse, actions, now = setup
+    journal = SessionJournal(tmp_path, audio_enabled=False, metadata={})
+    session.journal = journal
+    muse.package_num_channel = 5
+    data = chunk(504)
+    data[4, 200:] += .1
+    data = np.vstack([data, np.repeat(np.arange(42), 12)])
+    muse.get_data = lambda: data
+    result = session.run_step()
+    assert not result['ready']
+    assert result['timestamp_diagnostics']['gap_count'] == 1
+    assert result['packet_diagnostics']['forward_jump_count'] == 0
+    assert result['packet_diagnostics']['consecutive_packet_steps'] == 41
+    assert actions[-1] == {'master_volume': 0.}
+    journal.close('completed')
+    records = [json.loads(s) for s in journal.path.read_text().splitlines()]
+    assert records[1]['observation']['packet_diagnostics'] == result['packet_diagnostics']
+
+
+def test_bilingual_message_precedes_stream_start(setup, capsys, monkeypatch):
+    waits = []
+    monkeypatch.setattr(module.time, "sleep", waits.append)
+    session, muse, actions, now = setup
+    muse.connect = lambda: True
+    def start():
+        printed = capsys.readouterr().out
+        assert waits == [1] * 5
+        assert [line.rsplit(': ', 1)[-1] for line in printed.splitlines() if line.startswith('Starting in')] == ['5', '4', '3', '2', '1']
+        assert 'Muse is about to start. Please get ready.' in printed
+        assert 'Muse зараз почне запис. Будь ласка, підготуйтеся.' in printed
+        return False
+    muse.start = start
+    muse.stop = lambda: None
+    assert session.run(duration_seconds=1) == 'stream_start_failed'
+
+
+def test_countdown_interrupt_disconnects_without_starting_stream(setup, monkeypatch):
+    session, muse, actions, now = setup
+    events = []
+    muse.connect = lambda: True
+    muse.start = lambda: events.append('start')
+    muse.stop = lambda: events.append('stop')
+    def interrupt(_):
+        raise KeyboardInterrupt
+    monkeypatch.setattr(module.time, 'sleep', interrupt)
+    with pytest.raises(KeyboardInterrupt):
+        session.run(duration_seconds=1)
+    assert events == ['stop']

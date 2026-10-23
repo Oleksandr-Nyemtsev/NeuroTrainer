@@ -17,11 +17,15 @@ class BoundedAudioPolicy:
         if not math.isfinite(score) or not math.isfinite(now) or not observation.get("ready"):
             self.reset()
             return {"master_volume": 0.0}
+        stage_validated = observation.get("stage_validated_for_input") is True
+        if not stage_validated:
+            self.sleep_windows = 0
         # Count sleep evidence at >=30 s intervals, not each overlapping prediction.
         if self.last_update is None or now - self.last_update >= 30:
             self.last_update = now
-            p = observation["probabilities"]
-            sleep = sum(p[k] for k in ("N2", "N3", "REM")) >= .8
+            # Usable EEG and a model prediction do not establish sleep.
+            sleep = (stage_validated and sum(observation["probabilities"][k]
+                     for k in ("N2", "N3", "REM")) >= .8)
             self.sleep_windows = self.sleep_windows + 1 if sleep else 0
             target_volume = .03 if self.sleep_windows >= 2 else .10
             target_beat = choose_audio_action(score)["beat_frequency"]

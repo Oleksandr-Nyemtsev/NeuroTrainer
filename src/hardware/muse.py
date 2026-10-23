@@ -15,6 +15,7 @@ class MuseDevice:
         self.board_id = BoardIds.MUSE_2_BOARD.value
         self.board = BoardShim(self.board_id, self.params)
         self.streaming = False
+        self.package_num_channel = BoardShim.get_package_num_channel(self.board_id)
 
     def connect(self):
         try:

@@ -37,6 +37,9 @@ def test_rolling_context_and_two_second_updates():
         ts = (np.arange(512)+i*512)/256
         result = observer.update(eeg(),ts)
         assert result['ready'] == (i>=14)
+        if result['ready']:
+            assert result['stage_validated_for_input'] is False
+            assert result['experimental_muse_transfer'] is True
     assert len(calls)==2
     assert observer.buffer.shape==(4,7680)
     assert result['window_start']==2
@@ -61,7 +64,9 @@ def test_faults_reset_previous_prediction():
 def test_audio_bounds_cadence_and_sleep_attenuation():
     policy=BoundedAudioPolicy()
     awake={'ready':True,'probabilities':dict(Wake=1,N1=0,N2=0,N3=0,REM=0)}
-    asleep={'ready':True,'probabilities':dict(Wake=0,N1=0,N2=1,N3=0,REM=0)}
+    # Explicitly validated synthetic input exercises the retained policy branch.
+    asleep={'ready':True,'stage_validated_for_input':True,
+            'probabilities':dict(Wake=0,N1=0,N2=1,N3=0,REM=0)}
     previous=None
     for t in range(0,1200,2):
         action=policy.choose(0 if t<600 else 10,awake,t)
@@ -77,6 +82,48 @@ def test_audio_bounds_cadence_and_sleep_attenuation():
     assert action['master_volume']==pytest.approx(.03)
     assert policy.choose(10,{'ready':False},1560)=={'master_volume':0.0}
     assert policy.sleep_windows==0
+
+
+@pytest.mark.parametrize('stage', ['N2', 'REM'])
+@pytest.mark.parametrize('validation', ['missing', False, None, 1, 'true'])
+def test_unvalidated_stage_does_not_change_audio_action(stage, validation):
+    policies = [BoundedAudioPolicy(), BoundedAudioPolicy()]
+    observations = []
+    for label in ('Wake', stage):
+        observation = {'ready': True, 'probabilities': {
+            name: float(name == label) for name in ('Wake', 'N1', 'N2', 'N3', 'REM')}}
+        if validation != 'missing':
+            observation['stage_validated_for_input'] = validation
+        observations.append(observation)
+    for t in range(0, 900, 2):
+        score = 0 if t < 450 else 10
+        awake, predicted_sleep = [policy.choose(score, obs, t)
+                                  for policy, obs in zip(policies, observations)]
+        assert predicted_sleep == awake
+        assert policies[1].sleep_windows == 0
+    assert predicted_sleep['master_volume'] == pytest.approx(.10)
+
+
+@pytest.mark.parametrize('validation', ['missing', False])
+def test_losing_validation_clears_sleep_evidence_before_next_update(validation):
+    policy = BoundedAudioPolicy()
+    observation = {'ready': True, 'stage_validated_for_input': True,
+                   'probabilities': dict(Wake=0, N1=0, N2=0, N3=0, REM=1)}
+    for t in range(0, 600, 30):
+        previous = policy.choose(0, observation, t)
+    assert policy.sleep_windows >= 2
+    assert previous['master_volume'] == pytest.approx(.03)
+    if validation == 'missing':
+        observation.pop('stage_validated_for_input')
+    else:
+        observation['stage_validated_for_input'] = validation
+    # Validation can disappear between scheduled 30-second policy updates.
+    assert policy.choose(10, observation, 571) == previous
+    assert policy.sleep_windows == 0
+    next_action = policy.choose(10, observation, 600)
+    assert next_action['master_volume'] == pytest.approx(.04)
+    assert abs(next_action['beat_frequency'] - previous['beat_frequency']) <= .5
+    assert policy.sleep_windows == 0
 
 
 def test_live_integration_retains_fast_analysis_and_mutes_fault(monkeypatch):
@@ -124,3 +171,58 @@ def test_quality_details_distinguish_offset_from_flatline():
     assert "TP10: mean=0.00 uV" in str(error.value)
     assert "Flatline (quality < 0.75)" in str(error.value)
     assert "absolute peak > 500" not in str(error.value)
+
+
+def test_packet_continuity_allows_bounded_jitter_and_accumulates_sleep(monkeypatch):
+    now = [2000.]
+    monkeypatch.setattr(module.time, 'time', lambda: now[0])
+    monkeypatch.setattr(module, 'BoardShim', SimpleNamespace(
+        get_eeg_channels=lambda _: [0,1,2,3], get_timestamp_channel=lambda _: 4))
+    m, calls = model()
+    muse = SimpleNamespace(package_num_channel=5)
+    observer = SleepObserver(m)
+    session = module.NeuroSession(muse, SimpleNamespace(apply_action=lambda _: None),
+                                  sleep_observer=observer)
+    last = 2000.
+    for i in range(16):
+        dt = np.full(516, 1/256)
+        dt[:12] = .0065
+        dt[12:24] = 2/256 - .0065
+        ts = last + np.cumsum(dt)
+        last = float(ts[-1]); now[0] = last
+        ids = np.repeat(np.arange(i*43, (i+1)*43), 12)
+        data = np.vstack([eeg(516), ts, ids])
+        muse.get_data = lambda: data
+        result = session.run_step()
+        assert result['ready']
+        assert result['timestamp_diagnostics']['gap_count'] > 0
+        assert result['timestamp_diagnostics']['applied_gap_count'] == 0
+    assert result['sleep']['ready'] and calls
+    # Skip an ID while keeping timestamps normal: must reject and reset.
+    ts = last + np.arange(1,517)/256; now[0] = float(ts[-1])
+    ids = np.repeat(np.arange(16*43+1,17*43+1),12)
+    data = np.vstack([eeg(516),ts,ids])
+    result = session.run_step()
+    assert not result['ready'] and result['reason'] == 'EEG packet sequence anomaly'
+    assert observer.buffer.shape[1] == 0
+
+
+@pytest.mark.parametrize('kind', ['large_gap', 'duplicate', 'backward'])
+def test_observer_packet_evidence_does_not_override_bad_time(kind):
+    m, _ = model()
+    observer = SleepObserver(m)
+    ts = np.arange(512)/256
+    if kind == 'large_gap': ts[200:] += .1
+    elif kind == 'duplicate': ts[200] = ts[199]
+    else: ts[200] = ts[199] - .001
+    with pytest.raises(ValueError, match='timestamp gap'):
+        observer.update(eeg(), ts, packet_evidence=True)
+
+
+def test_observer_without_packet_evidence_retains_strict_limit():
+    m, _ = model()
+    ts = np.arange(512)/256
+    ts[200:] += .0025
+    with pytest.raises(ValueError, match='timestamp gap'):
+        SleepObserver(m).update(eeg(), ts)
+    assert not SleepObserver(m).update(eeg(), ts, packet_evidence=True)['ready']

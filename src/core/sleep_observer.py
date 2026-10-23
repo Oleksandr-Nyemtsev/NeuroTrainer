@@ -2,6 +2,7 @@
 import numpy as np
 from scipy.signal import butter, sosfiltfilt, resample_poly
 from src.signal.muse_quality import MuseSignalQuality
+from src.core.packet_diagnostics import timestamp_interval_limit
 
 
 def prepare_sleep_input(eeg):
@@ -34,7 +35,7 @@ class SleepObserver:
         self.last_prediction = None
         self.result = {"ready": False, "reason": "Collecting 30 seconds"}
 
-    def update(self, eeg, timestamps):
+    def update(self, eeg, timestamps, *, packet_evidence=False):
         eeg, ts = np.asarray(eeg), np.asarray(timestamps)
         if (eeg.ndim != 2 or eeg.shape[0] != 4 or ts.ndim != 1
                 or eeg.shape[1] != len(ts) or not len(ts)
@@ -43,7 +44,7 @@ class SleepObserver:
             raise ValueError("Invalid observer input")
         times = np.r_[self.timestamps[-1:], ts]
         dt = np.diff(times)
-        if np.any(dt <= 0) or np.any(dt > 1.5/256):
+        if np.any(dt <= 0) or np.any(dt > timestamp_interval_limit(256, packet_evidence)):
             self.reset()
             raise ValueError("Observer timestamp gap")
         scores = self.quality.analyze(eeg)["channels"]
@@ -84,6 +85,7 @@ class SleepObserver:
             raise ValueError("Invalid sleep probabilities")
         self.last_prediction = float(ts[-1])
         self.result = {"ready": True, "probabilities": probs,
+                       "stage_validated_for_input": False,
                        "stage": max(probs, key=probs.get),
                        "window_start": float(self.timestamps[0]),
                        "window_end": float(ts[-1]), "experimental_muse_transfer": True}
